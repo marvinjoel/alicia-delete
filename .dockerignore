@@ -1,0 +1,22 @@
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Cache de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Git
+.git/
+.gitignore
+
+# Variables de entorno
+config.env
+.env
+
+# Modelos pesados (se mapean por volumen)
+models/*.pt
+models/*.onnx
