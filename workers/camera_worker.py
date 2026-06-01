@@ -14,6 +14,7 @@ from processors.staff_tracker      import StaffTrackerProcessor
 from processors.people_counter     import PeopleCounterProcessor
 from processors.queue_detector     import QueueDetectorProcessor
 from processors.lego_tracker       import LegoTrackerProcessor
+from processors.face_blur          import FaceBlurProcessor
 
 PROCESADORES_MAP = {
     "dirty_table_detector": DirtyTableProcessor,
@@ -23,6 +24,7 @@ PROCESADORES_MAP = {
     "people_counter":       PeopleCounterProcessor,
     "queue_detector":       QueueDetectorProcessor,
     "lego_tracker":         LegoTrackerProcessor,
+    "face_blur":            FaceBlurProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
@@ -165,11 +167,11 @@ class CameraWorker:
             c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return c
 
-        print(f"[Worker {self.camara_id}] Conectando a: {fuente}")
-        cap = _abrir_cap(fuente)
+        #print(f"[Worker {self.camara_id}] Conectando a: {fuente}")
+        #cap = _abrir_cap(fuente)
 
-        intentos_reconexion = 0
-        contador_frames     = 0
+        #intentos_reconexion = 0
+        #contador_frames     = 0
 
         # ── Acumuladores para snapshot (desactivado — usando VLM en navegador) ──
         # SNAPSHOT_INTERVALO  = 60
@@ -178,8 +180,25 @@ class CameraWorker:
         # acum_objetos        = {}
         # acum_mesas_sucias   = []
         # _CLASES_SUCIEDAD = {"cup","bowl","bottle","fork","knife","spoon","wine glass","plate"}
+        print(f"[Worker {self.camara_id}] Conectando a: {fuente}")
+        cap = _abrir_cap(fuente)
+
+        intentos_reconexion = 0
+        contador_frames     = 0
+        
+        # 1. Obtenemos los FPS originales del video
+        fps_original = cap.get(cv2.CAP_PROP_FPS)
+        # Si OpenCV no puede leer los FPS (a veces pasa en streams raros), asumimos 30
+        if fps_original <= 0 or fps_original != fps_original:
+            fps_original = 30.0
+            
+        # 2. Calculamos cuánto tiempo matemático debería tomar cada frame
+        tiempo_por_frame = 1.0 / fps_original
 
         while self.corriendo:
+            # 3. Anotamos el momento exacto en que empezamos a procesar este frame
+            inicio_frame = time.time()
+
             ok, frame = cap.read()
 
             if not ok:
@@ -214,6 +233,7 @@ class CameraWorker:
                 # Dibujar cajas YOLO en el frame
                 frame_out = resultados[0].plot()  # ← paso con deteccion de otros obj
                 #frame_out = frame                  # ← pasar frame limpio
+                #frame_out = frame_yolo.copy()
 
                 # ── [snapshot desactivado — VLM analiza frames directamente en browser] ──
 
@@ -231,6 +251,16 @@ class CameraWorker:
             except Exception as e:
                 print(f"[Worker {self.camara_id}] Error procesando frame: {e}")
                 continue
+                
+            # --- NUEVO CÓDIGO MARCAPASOS AQUÍ ---
+            # 4. Calculamos cuánto nos demoramos en leer, YOLO y dibujar
+            tiempo_procesamiento = time.time() - inicio_frame
+            tiempo_a_esperar = tiempo_por_frame - tiempo_procesamiento
+            
+            # 5. Si fuimos más rápidos que el video original, dormimos el hilo la diferencia
+            if tiempo_a_esperar > 0:
+                time.sleep(tiempo_a_esperar)
+            # ------------------------------------
 
         cap.release()
         set_camara_inactiva(self.camara_id)
