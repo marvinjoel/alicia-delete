@@ -15,6 +15,7 @@ from processors.people_counter     import PeopleCounterProcessor
 from processors.queue_detector     import QueueDetectorProcessor
 from processors.lego_tracker       import LegoTrackerProcessor
 from processors.face_blur          import FaceBlurProcessor
+from processors.service_time       import ServiceTimeProcessor
 
 
 PROCESADORES_MAP = {
@@ -25,7 +26,8 @@ PROCESADORES_MAP = {
     "people_counter":       PeopleCounterProcessor,
     "queue_detector":       QueueDetectorProcessor,
     "lego_tracker":         LegoTrackerProcessor,
-    "face_blur":            FaceBlurProcessor
+    "face_blur":            FaceBlurProcessor,
+    "service_time":         ServiceTimeProcessor,
 
 }
 

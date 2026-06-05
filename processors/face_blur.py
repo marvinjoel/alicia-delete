@@ -1,70 +1,65 @@
 import cv2
+import os
+from ultralytics import YOLO
 from processors.base_processor import BaseProcessor
-
 
 class FaceBlurProcessor(BaseProcessor):
     """
-    Detecta rostros (frontales y de perfil) usando OpenCV y aplica un filtro
-    de desenfoque (blur). Optimizado para cámaras de seguridad (CCTV).
+    Detecta exclusivamente ROSTROS usando un modelo YOLO especializado.
+    Ignora a las personas de espaldas y dibuja el difuminado exactamente sobre la cara.
     """
 
     def __init__(self, camara_id, config):
         super().__init__(camara_id, config)
         
-        try:
-            # 1. Cargar modelo para rostros de frente
-            ruta_frontal = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            self.face_cascade = cv2.CascadeClassifier(ruta_frontal)
+        # Leemos exactamente el archivo que me mostraste en tu captura
+        ruta_modelo = "models/yolov8n-face-lindevs.pt"
+        
+        if not os.path.exists(ruta_modelo):
+            print(f"[FaceBlur - Cam {self.camara_id}] 🔴 ERROR: No se encontró {ruta_modelo}.")
+            self.face_model = None
+        else:
+            print(f"[FaceBlur - Cam {self.camara_id}] Cargando modelo de rostros...")
+            self.face_model = YOLO(ruta_modelo)
             
-            # 2. Cargar modelo para rostros de perfil (muy común en la calle)
-            ruta_perfil = cv2.data.haarcascades + 'haarcascade_profileface.xml'
-            self.profile_cascade = cv2.CascadeClassifier(ruta_perfil)
-            
-            print(f"[FaceBlur - Cam {self.camara_id}] 🟢 Módulo inicializado. Modelos Haar cargados correctamente.")
-        except Exception as e:
-            print(f"[FaceBlur - Cam {self.camara_id}] 🔴 ERROR crítico al cargar modelos OpenCV: {e}")
+            # Enviar el modelo de rostros a la GPU (NVIDIA A2)
+            try:
+                import torch
+                dev_cfg = os.getenv("IA_DEVICE", "auto").lower()
+                dev = "cuda" if dev_cfg == "cuda" or (dev_cfg == "auto" and torch.cuda.is_available()) else "cpu"
+                self.face_model.to(dev)
+                print(f"[FaceBlur - Cam {self.camara_id}] 🟢 Modelo de rostros cargado en {dev}")
+            except Exception as e:
+                print(f"[FaceBlur - Cam {self.camara_id}] Aviso device Face YOLO: {e}")
 
     def procesar(self, frame, resultados):
-        try:
-            # Convertir a grises
-            gris = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Si el modelo no cargó, devolvemos el frame limpio
+        if not self.face_model:
+            return frame
 
-            # Detección Frontal (scaleFactor 1.05 es más lento pero más preciso, minSize más pequeño)
-            rostros_frontales = self.face_cascade.detectMultiScale(
-                gris, 
-                scaleFactor=1.05, 
-                minNeighbors=4, 
-                minSize=(15, 15)
-            )
+        # Ejecutamos el modelo especialista en rostros
+        # conf=0.3 asegura que detecte rostros claros sin agarrar basura del fondo
+        resultados_caras = self.face_model(frame, verbose=False, conf=0.3)
+        cajas_caras = resultados_caras[0].boxes
 
-            # Detección de Perfil
-            rostros_perfil = self.profile_cascade.detectMultiScale(
-                gris, 
-                scaleFactor=1.05, 
-                minNeighbors=4, 
-                minSize=(15, 15)
-            )
+        for box in cajas_caras:
+            # Obtener las coordenadas exactas de la cara detectada
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            
+            # Validar límites de la imagen por seguridad matemática
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(frame.shape[1], x2)
+            y2 = min(frame.shape[0], y2)
 
-            # Consolidar todos los rostros detectados en una sola lista
-            rostros = []
-            if len(rostros_frontales) > 0:
-                rostros.extend(rostros_frontales)
-            if len(rostros_perfil) > 0:
-                rostros.extend(rostros_perfil)
-
-            # LOG DE TELEMETRÍA: Avisar a la consola solo si detectó algo
-            if len(rostros) > 0:
-                print(f"[FaceBlur - Cam {self.camara_id}] 👤 Detectados {len(rostros)} rostros en el frame actual.")
-
-            # Aplicar desenfoque gaussiano a cada rostro
-            for (x, y, w, h) in rostros:
-                # Extraer ROI y aplicar blur
-                rostro_roi = frame[y:y+h, x:x+w]
-                rostro_blur = cv2.GaussianBlur(rostro_roi, (99, 99), 30)
-                frame[y:y+h, x:x+w] = rostro_blur
-
-        except Exception as e:
-            # LOG DE ERROR: Evita que el worker muera si hay un fallo matemático
-            print(f"[FaceBlur - Cam {self.camara_id}] ⚠️ Error procesando frame: {e}")
+            # Extraer el cuadro exacto de la cara
+            rostro_roi = frame[y1:y2, x1:x2]
+            
+            # Solo difuminar si el cuadro tiene dimensiones válidas
+            if rostro_roi.shape[0] > 0 and rostro_roi.shape[1] > 0:
+                # Aplicar blur fuerte
+                rostro_blur = cv2.GaussianBlur(rostro_roi, (51, 51), 30)
+                # Reemplazar los píxeles originales con los difuminados
+                frame[y1:y2, x1:x2] = rostro_blur
 
         return frame
