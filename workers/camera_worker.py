@@ -5,7 +5,6 @@ import threading
 
 from ultralytics import YOLO
 from services.database import get_camara, get_analiticas_camara
-# from services.database import insertar_snapshot  # snapshot desactivado — usando VLM en navegador
 
 from processors.dirty_tables       import DirtyTableProcessor
 from processors.table_occupancy    import TableOccupancyProcessor
@@ -26,9 +25,7 @@ PROCESADORES_MAP = {
     "people_counter":       PeopleCounterProcessor,
     "queue_detector":       QueueDetectorProcessor,
     "lego_tracker":         LegoTrackerProcessor,
-    "face_blur":            FaceBlurProcessor,
-    "service_time":         ServiceTimeProcessor,
-
+    "service_time":         ServiceTimeProcessor
 }
 
 # Registro global: camara_id -> CameraWorker
@@ -87,6 +84,10 @@ class CameraWorker:
         except Exception as e:
             print(f"[Worker {camara_id}] Aviso device YOLO: {e}")
 
+        # ---> CAPA DE PRIVACIDAD GLOBAL (FACE BLUR) <---
+        # Se instancia obligatoriamente para anonimizar el video desde la raíz
+        self.difuminador_rostros = FaceBlurProcessor(camara_id, {"modulo": "privacidad_global"})
+
         # ── Instanciar procesadores ────────────────────────────────────────
         # Lista de procesadores a desactivar desde config.env
         desactivados = set(
@@ -130,8 +131,6 @@ class CameraWorker:
         fuente = int(self.url_stream) if self.url_stream.strip().isdigit() else self.url_stream
 
         # ── Modo webcam del navegador ──────────────────────────────────────
-        # Los frames llegan via POST /webcam/frame — este worker solo queda
-        # registrado como "activo" pero no abre ninguna camara.
         if fuente == 'browser':
             print(f"[Worker {self.camara_id}] Modo webcam navegador — frames via /webcam/frame")
             while self.corriendo:
@@ -156,18 +155,14 @@ class CameraWorker:
             except Exception as e:
                 raise ValueError(f"No se pudo resolver YouTube: {e}")
 
-        # Procesar 1 de cada N frames con YOLO (el resto solo se lee para vaciar el buffer)
         PROCESAR_CADA_N = int(os.getenv("PROCESAR_CADA_N", "3"))
-        # Ancho maximo antes de pasar a YOLO (0 = sin resize)
         YOLO_MAX_WIDTH   = int(os.getenv("YOLO_MAX_WIDTH", "640"))
 
         def _abrir_cap(f):
             if isinstance(f, str) and f.startswith("http"):
-                # MJPEG sobre HTTP requiere backend FFMPEG en Windows
                 c = cv2.VideoCapture(f, cv2.CAP_FFMPEG)
             else:
                 c = cv2.VideoCapture(f)
-            # Buffer minimo: evita acumular frames viejos en streams lentos
             c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return c
 
@@ -176,14 +171,6 @@ class CameraWorker:
 
         intentos_reconexion = 0
         contador_frames     = 0
-
-        # ── Acumuladores para snapshot (desactivado — usando VLM en navegador) ──
-        # SNAPSHOT_INTERVALO  = 60
-        # ultimo_snapshot     = time.time()
-        # acum_personas       = []
-        # acum_objetos        = {}
-        # acum_mesas_sucias   = []
-        # _CLASES_SUCIEDAD = {"cup","bowl","bottle","fork","knife","spoon","wine glass","plate"}
 
         while self.corriendo:
             ok, frame = cap.read()
@@ -199,32 +186,31 @@ class CameraWorker:
             intentos_reconexion  = 0
             contador_frames     += 1
 
-            # Saltar frames: leer todos para vaciar buffer, pero YOLO solo en 1 de N
             if contador_frames % PROCESAR_CADA_N != 0:
                 continue
 
             try:
-                # Guardar frame limpio para Vision IA (VLM)
+                # ---> PRIVACIDAD DESDE EL DISEÑO <---
+                # Aplicamos la censura al frame original de inmediato. Pasamos None en 
+                # resultados porque el modelo FaceBlur hace su propia detección interna.
+                frame = self.difuminador_rostros.procesar(frame, None)
+
+                # Guardar frame limpio (PERO YA CENSURADO) para FastVLM
                 self.frame_raw = frame
 
-                # ── Resize opcional antes de YOLO (reduce tiempo de inferencia) ──
+                # ── Resize opcional antes de YOLO ──
                 frame_yolo = frame
                 if YOLO_MAX_WIDTH > 0 and frame.shape[1] > YOLO_MAX_WIDTH:
                     escala     = YOLO_MAX_WIDTH / frame.shape[1]
                     nuevo_alto = int(frame.shape[0] * escala)
                     frame_yolo = cv2.resize(frame, (YOLO_MAX_WIDTH, nuevo_alto))
 
-                # ── YOLO: detectar objetos en el frame ─────────────────────
+                # ── YOLO: detectar objetos en el frame ya censurado ──
                 resultados = self.modelo(frame_yolo, verbose=False)
 
-                # Dibujar cajas YOLO en el frame
-                #frame_out = resultados[0].plot()  # ← paso con deteccion de otros obj
-                #frame_out = frame                  # ← pasar frame limpio
                 frame_out = frame_yolo.copy()
 
-                # ── [snapshot desactivado — VLM analiza frames directamente en browser] ──
-
-                # ── Procesadores: logica de negocio + overlays personalizados
+                # ── Procesadores: logica de negocio + overlays
                 for proc in self.procesadores:
                     frame_out = proc.procesar(frame_out, resultados)
 
