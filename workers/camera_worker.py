@@ -15,6 +15,7 @@ from processors.queue_detector     import QueueDetectorProcessor
 from processors.lego_tracker       import LegoTrackerProcessor
 from processors.face_blur          import FaceBlurProcessor
 from processors.service_time       import ServiceTimeProcessor
+from processors.efficiency_tracker import EfficiencyTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -25,7 +26,9 @@ PROCESADORES_MAP = {
     "people_counter":       PeopleCounterProcessor,
     "queue_detector":       QueueDetectorProcessor,
     "lego_tracker":         LegoTrackerProcessor,
-    "service_time":         ServiceTimeProcessor
+    "service_time":         ServiceTimeProcessor,
+    "efficiency_tracker":   EfficiencyTrackerProcessor,
+    "face_blur":            FaceBlurProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
@@ -86,7 +89,7 @@ class CameraWorker:
 
         # ---> CAPA DE PRIVACIDAD GLOBAL (FACE BLUR) <---
         # Se instancia obligatoriamente para anonimizar el video desde la raíz
-        self.difuminador_rostros = FaceBlurProcessor(camara_id, {"modulo": "privacidad_global"})
+        ##self.difuminador_rostros = FaceBlurProcessor(camara_id, {"modulo": "privacidad_global"})
 
         # ── Instanciar procesadores ────────────────────────────────────────
         # Lista de procesadores a desactivar desde config.env
@@ -156,7 +159,7 @@ class CameraWorker:
                 raise ValueError(f"No se pudo resolver YouTube: {e}")
 
         PROCESAR_CADA_N = int(os.getenv("PROCESAR_CADA_N", "3"))
-        YOLO_MAX_WIDTH   = int(os.getenv("YOLO_MAX_WIDTH", "640"))
+        YOLO_MAX_WIDTH   = int(os.getenv("YOLO_MAX_WIDTH", "1280"))
 
         def _abrir_cap(f):
             if isinstance(f, str) and f.startswith("http"):
@@ -193,7 +196,7 @@ class CameraWorker:
                 # ---> PRIVACIDAD DESDE EL DISEÑO <---
                 # Aplicamos la censura al frame original de inmediato. Pasamos None en 
                 # resultados porque el modelo FaceBlur hace su propia detección interna.
-                frame = self.difuminador_rostros.procesar(frame, None)
+                ####frame = self.difuminador_rostros.procesar(frame, None)
 
                 # Guardar frame limpio (PERO YA CENSURADO) para FastVLM
                 self.frame_raw = frame
@@ -206,7 +209,15 @@ class CameraWorker:
                     frame_yolo = cv2.resize(frame, (YOLO_MAX_WIDTH, nuevo_alto))
 
                 # ── YOLO: detectar objetos en el frame ya censurado ──
-                resultados = self.modelo(frame_yolo, verbose=False)
+                #resultados = self.modelo(frame_yolo, verbose=False)
+                resultados = self.modelo(frame_yolo, verbose=False, imgsz=1280)
+                #resultados = self.modelo.track(
+                #    frame_yolo, 
+                #    persist=True, 
+                #    verbose=False, 
+                #    imgsz=1280,
+                #    tracker="bytetrack.yaml",
+                #    )
 
                 frame_out = frame_yolo.copy()
 
