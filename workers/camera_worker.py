@@ -16,6 +16,7 @@ from processors.lego_tracker       import LegoTrackerProcessor
 from processors.face_blur          import FaceBlurProcessor
 from processors.service_time       import ServiceTimeProcessor
 from processors.efficiency_tracker import EfficiencyTrackerProcessor
+from processors.ergonomics_tracker import ErgonomicsTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -29,6 +30,7 @@ PROCESADORES_MAP = {
     "service_time":         ServiceTimeProcessor,
     "efficiency_tracker":   EfficiencyTrackerProcessor,
     "face_blur":            FaceBlurProcessor,
+    "ergonomics_tracker":   ErgonomicsTrackerProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
