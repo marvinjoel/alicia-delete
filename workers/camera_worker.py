@@ -17,6 +17,7 @@ from processors.face_blur          import FaceBlurProcessor
 from processors.service_time       import ServiceTimeProcessor
 from processors.efficiency_tracker import EfficiencyTrackerProcessor
 from processors.ergonomics_tracker import ErgonomicsTrackerProcessor
+from processors.wip_tracker        import WipTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -31,6 +32,7 @@ PROCESADORES_MAP = {
     "efficiency_tracker":   EfficiencyTrackerProcessor,
     "face_blur":            FaceBlurProcessor,
     "ergonomics_tracker":   ErgonomicsTrackerProcessor,
+    "wip_tracker":          WipTrackerProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
