@@ -18,6 +18,8 @@ from processors.service_time       import ServiceTimeProcessor
 from processors.efficiency_tracker import EfficiencyTrackerProcessor
 from processors.ergonomics_tracker import ErgonomicsTrackerProcessor
 from processors.wip_tracker        import WipTrackerProcessor
+from processors.format_change_tracker import FormatChangeTrackerProcessor
+from processors.microparada_tracker import MicroparadaTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -33,6 +35,8 @@ PROCESADORES_MAP = {
     "face_blur":            FaceBlurProcessor,
     "ergonomics_tracker":   ErgonomicsTrackerProcessor,
     "wip_tracker":          WipTrackerProcessor,
+    "format_change_tracker": FormatChangeTrackerProcessor,
+    "microparada_tracker":   MicroparadaTrackerProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
