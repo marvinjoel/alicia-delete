@@ -43,11 +43,31 @@ _main_loop = None
 
 @router.websocket("/ws/{camara_id}")
 async def websocket_endpoint(ws: WebSocket, camara_id: int):
+    from workers.camera_worker import workers_activos
+    
     await ws_manager.conectar(ws, camara_id)
     try:
         while True:
-            # Mantener la conexion viva. El servidor empuja, el cliente solo escucha.
-            await ws.receive_text()
+            # 1. El backend ahora se queda escuchando comandos del frontend
+            data = await ws.receive_text()
+            
+            try:
+                msg = json.loads(data)
+                
+                # 2. Si el frontend envía la orden de cambiar clases:
+                # Payload esperado del front: {"action": "update_classes", "classes": [0, 39]}
+                if msg.get("action") == "update_classes":
+                    nuevas_clases = msg.get("classes")
+                    
+                    worker = workers_activos.get(camara_id)
+                    if worker and hasattr(worker, 'modelo'):
+                        # YOLO actualiza el filtro en tiempo real en la GPU
+                        worker.modelo.classes = nuevas_clases if nuevas_clases else None
+                        print(f"[WS] Cam {camara_id} | Filtro de clases actualizado: {nuevas_clases}")
+                        
+            except json.JSONDecodeError:
+                print(f"[WS] Error decodificando mensaje de control: {data}")
+                
     except WebSocketDisconnect:
         ws_manager.desconectar(ws, camara_id)
         print(f"[WS] Cliente desconectado de camara {camara_id}")
