@@ -20,6 +20,7 @@ from processors.ergonomics_tracker import ErgonomicsTrackerProcessor
 from processors.wip_tracker        import WipTrackerProcessor
 from processors.format_change_tracker import FormatChangeTrackerProcessor
 from processors.microparada_tracker import MicroparadaTrackerProcessor
+from processors.abandoned_sale_tracker import AbandonedSaleTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -37,6 +38,7 @@ PROCESADORES_MAP = {
     "wip_tracker":          WipTrackerProcessor,
     "format_change_tracker": FormatChangeTrackerProcessor,
     "microparada_tracker":   MicroparadaTrackerProcessor,
+    "abandoned_sale_tracker": AbandonedSaleTrackerProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker

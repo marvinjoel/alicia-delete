@@ -67,18 +67,24 @@ class BaseProcessor(ABC):
 
     # ── Emision de eventos ─────────────────────────────────────────────────
 
-    def _emitir_evento(self, tipo_evento: str, duracion_seg: int, datos: dict):
+    def _emitir_evento(self, tipo_evento: str, duracion_seg: int, datos: dict, clave_evento: str = None):
         """
         Guarda el evento en BD con cooldown por tipo_evento (30s por defecto).
         Siempre hace broadcast por WebSocket al dashboard.
+
+        `clave_evento` permite separar el cooldown por sub-caso (ej. por cliente_id)
+        cuando un mismo tipo_evento puede ocurrir varias veces en paralelo para
+        entidades distintas dentro de la misma camara. Si no se indica, el cooldown
+        aplica por tipo_evento (comportamiento original).
         """
         import time
         from services.database import insertar_evento
 
+        clave = clave_evento or tipo_evento
         ahora = time.time()
-        if ahora - self._ultimo_evento.get(tipo_evento, 0) < self._evento_cooldown:
+        if ahora - self._ultimo_evento.get(clave, 0) < self._evento_cooldown:
             return None  # cooldown activo, ignorar
-        self._ultimo_evento[tipo_evento] = ahora
+        self._ultimo_evento[clave] = ahora
 
         print(f"[{self.modulo}] Cam={self.camara_id} | EVENTO={tipo_evento} | dur={duracion_seg}s | datos={datos}")
         try:
