@@ -21,6 +21,7 @@ from processors.wip_tracker        import WipTrackerProcessor
 from processors.format_change_tracker import FormatChangeTrackerProcessor
 from processors.microparada_tracker import MicroparadaTrackerProcessor
 from processors.abandoned_sale_tracker import AbandonedSaleTrackerProcessor
+from processors.behavior_anomaly_tracker import BehaviorAnomalyTrackerProcessor
 
 
 PROCESADORES_MAP = {
@@ -39,6 +40,7 @@ PROCESADORES_MAP = {
     "format_change_tracker": FormatChangeTrackerProcessor,
     "microparada_tracker":   MicroparadaTrackerProcessor,
     "abandoned_sale_tracker": AbandonedSaleTrackerProcessor,
+    "behavior_anomaly_tracker": BehaviorAnomalyTrackerProcessor,
 }
 
 # Registro global: camara_id -> CameraWorker
@@ -155,18 +157,41 @@ class CameraWorker:
         if isinstance(fuente, str) and ('youtube.com' in fuente or 'youtu.be' in fuente):
             print(f"[Worker {self.camara_id}] Resolviendo URL de YouTube...")
             try:
+                import os
                 import yt_dlp
+                
                 ydl_opts = {
-                    'format': 'best[protocol^=m3u8]/best[height<=720]/best',
+                    # Formato seguro y compatible con OpenCV
+                    'format': 'best[height<=720]/best',
                     'quiet': True,
                     'no_warnings': True,
+                    'nocheckcertificate': True
                 }
+                
+                # --- ARQUITECTURA DEFENSIVA: Validar cookies antes de usarlas ---
+                ruta_cookies = 'cookies.txt'
+                if os.path.exists(ruta_cookies) and os.path.getsize(ruta_cookies) > 10:
+                    ydl_opts['cookiefile'] = ruta_cookies
+                    print(f"[Worker {self.camara_id}] 🟢 Usando cookies.txt para validación humana.")
+                else:
+                    print(f"[Worker {self.camara_id}] 🟡 AVISO: cookies.txt vacío o inválido. Usando modo anónimo.")
+
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info   = ydl.extract_info(fuente, download=False)
-                    fuente = info['url']
+                    info = ydl.extract_info(fuente, download=False)
+                    
+                    if 'url' in info:
+                        fuente = info['url']
+                    elif 'entries' in info and len(info['entries']) > 0:
+                        fuente = info['entries'][0]['url']
+                    else:
+                        raise ValueError("Estructura de respuesta de YouTube no reconocida.")
+                        
                 print(f"[Worker {self.camara_id}] CDN URL obtenida OK")
+                
             except Exception as e:
-                raise ValueError(f"No se pudo resolver YouTube: {e}")
+                print(f"[Worker {self.camara_id}] 🔴 ERROR CRÍTICO YouTube: {e}")
+                self.corriendo = False
+                return
 
         PROCESAR_CADA_N = int(os.getenv("PROCESAR_CADA_N", "3"))
         YOLO_MAX_WIDTH   = int(os.getenv("YOLO_MAX_WIDTH", "1280"))
